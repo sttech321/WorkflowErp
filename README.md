@@ -38,35 +38,10 @@ This project uses role-based access with three roles: `admin`, `manager`, and `e
 - Can update company logo/settings
 
 ### Employee
-- Access own account features (`/me`, update profile, change password)
 - Use attendance self-service actions: check-in, break start/end, check-out, and attendance list
 - Create/update/delete own leave requests (subject to handler ownership rules)
 - View leave balances
-
-### Quick Access Matrix
-
-| Module / Action | Admin | Manager | Employee |
-|---|---|---|---|
-| Dashboard view | ✅ | ✅ | ✅ |
-| Employees list | ✅ | ✅ | ✅ |
-| Employees create/update/delete | ✅ (manager + employee) | ✅ (employee only) | ❌ |
-| Employee user/password management | ✅ (manager + employee) | ✅ (employee only) | ❌ |
-| Invoices list | ✅ | ✅ | ✅ |
-| Invoices create/update/delete | ✅ | ✅ | ❌ |
-| Attendance check-in/out & breaks | ✅ | ✅ | ✅ |
-| Attendance manual break/delete records | ✅ | ✅ | ❌ |
-| Leave request create/update/delete | ✅ | ✅ | ✅ |
-| Leave approve/reject/pending | ✅ | ✅* | ❌ |
-| Leave policy view/update | ✅ | ✅ | ❌ |
-| Settings logo view | ✅ | ✅ | ✅ |
-| Settings logo update | ✅ | ✅ | ❌ |
-
-> `*` Manager cannot approve leave for a requester with role `manager`; only admin can.
-
-> Note: This matrix reflects the current backend route middleware and handler-level checks.
-
----
-
+- Update profile picture
 ## Technology Used
 
 ### Backend

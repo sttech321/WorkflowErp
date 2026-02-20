@@ -86,9 +86,11 @@ export default function TopBar({
         </button>
         {isOpen && (
           <div className="profile-dropdown" role="menu">
-            <Link className="profile-item" to="/settings" role="menuitem" onClick={() => setIsOpen(false)}>
-              Settings
-            </Link>
+            {user?.role !== "employee" && (
+              <Link className="profile-item" to="/settings" role="menuitem" onClick={() => setIsOpen(false)}>
+                Settings
+              </Link>
+            )}
             <Link className="profile-item" to="/profile" role="menuitem" onClick={() => setIsOpen(false)}>
               Profile
             </Link>

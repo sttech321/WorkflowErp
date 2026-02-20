@@ -1,18 +1,23 @@
 import { ChangeEvent, useEffect, useState } from "react";
 import axios from "axios";
+import { Navigate } from "react-router-dom";
 import api from "../api/client";
 import { me } from "../api/auth";
 import type { User } from "../api/types";
 
 export default function Settings() {
   const [user, setUser] = useState<User | null>(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(true);
   const [expandedLogoUrl, setExpandedLogoUrl] = useState<string | null>(null);
   const [collapsedLogoUrl, setCollapsedLogoUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    me().then((data) => setUser(data)).catch(() => setUser(null));
+    me()
+      .then((data) => setUser(data))
+      .catch(() => setUser(null))
+      .finally(() => setIsLoadingUser(false));
   }, []);
 
   useEffect(() => {
@@ -31,6 +36,14 @@ export default function Settings() {
   }, []);
 
   const canUpdateLogo = user?.role === "admin" || user?.role === "manager";
+
+  if (isLoadingUser) {
+    return null;
+  }
+
+  if (user?.role === "employee") {
+    return <Navigate to="/profile" replace />;
+  }
 
   const handleLogoChange = (event: ChangeEvent<HTMLInputElement>, variant: "expanded" | "collapsed") => {
     if (!canUpdateLogo) {

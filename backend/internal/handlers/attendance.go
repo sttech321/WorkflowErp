@@ -199,21 +199,6 @@ func (h *AttendanceHandler) CheckIn(c *gin.Context) {
 	if err := h.DB.Where("employee_id = ? AND check_out IS NULL", employeeID).
 		Order("created_at desc").First(&openRecord).Error; err == nil {
 		if !h.autoCloseIfExpired(&openRecord) {
-			if role == "admin" || role == "manager" {
-				openRecord.CheckIn = checkInTime
-				if err := h.DB.Save(&openRecord).Error; err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "checkin override failed"})
-					return
-				}
-				if err := h.DB.Preload("Breaks", func(db *gorm.DB) *gorm.DB {
-					return db.Order("created_at asc")
-				}).First(&openRecord, "id = ?", openRecord.ID).Error; err != nil {
-					c.JSON(http.StatusOK, openRecord)
-					return
-				}
-				c.JSON(http.StatusOK, openRecord)
-				return
-			}
 			c.JSON(http.StatusConflict, gin.H{"error": "open attendance exists"})
 			return
 		}
@@ -259,7 +244,10 @@ func (h *AttendanceHandler) CheckOut(c *gin.Context) {
 	}
 
 	role, _ := c.Get(middleware.ContextRole)
-	record, err := h.findOpenAttendance(c, req.AttendanceID, req.EmployeeID)
+
+	var record models.Attendance
+	var err error
+	record, err = h.findOpenAttendance(c, req.AttendanceID, req.EmployeeID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "open attendance not found"})
@@ -314,6 +302,11 @@ func (h *AttendanceHandler) CheckOut(c *gin.Context) {
 
 	for index := range record.Breaks {
 		if record.Breaks[index].BreakEnd == nil {
+			record.Breaks[index].BreakEnd = &checkOutTime
+			_ = h.DB.Save(&record.Breaks[index]).Error
+			continue
+		}
+		if record.Breaks[index].BreakEnd.After(checkOutTime) {
 			record.Breaks[index].BreakEnd = &checkOutTime
 			_ = h.DB.Save(&record.Breaks[index]).Error
 		}

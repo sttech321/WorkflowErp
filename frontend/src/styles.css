@@ -61,14 +61,23 @@ body {
   border-radius: 14px;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   padding: 0 14px;
   overflow: hidden;
 }
 
 .app-top-brand img {
-  max-height: 40px;
-  width: auto;
+  max-height: 56px;
+  width: min(100%, calc(var(--sidebar-width) - 8px));
+  max-width: calc(var(--sidebar-width) - 8px);
+  height: auto;
   object-fit: contain;
+  display: block;
+  margin-right: auto;
+}
+
+.app-shell.sidebar-collapsed .app-top-brand img {
+  max-height: 34px;
 }
 
 .app-top-brand span {
@@ -184,6 +193,13 @@ body {
 .button:hover {
   transform: translateY(-2px);
   background: var(--accent-dark);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  background: #c89075;
 }
 
 .panel {
@@ -503,6 +519,57 @@ label {
   align-content: start;
 }
 
+.attendance-manager-sections {
+  display: grid;
+  gap: 16px;
+}
+
+.attendance-filter-card {
+  margin-bottom: 16px;
+}
+
+.attendance-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.attendance-filter-actions {
+  display: flex;
+  justify-content: flex-start;
+  align-items: end;
+}
+
+.attendance-date-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.date-chip {
+  border: 1px solid var(--edge);
+  background: #fff;
+  color: var(--ink);
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.date-chip.active {
+  background: var(--soft);
+  border-color: rgba(216, 106, 58, 0.45);
+  color: var(--accent-dark);
+}
+
+.date-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .section-label {
   margin: 0;
 }
@@ -742,12 +809,7 @@ label {
 
 .manual-action-row {
   display: flex;
-  justify-content: flex-end;
-}
-
-.manual-action-row {
-  display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .manual-time-row {
@@ -760,13 +822,24 @@ label {
 .record-block {
   display: grid;
   gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(28, 24, 22, 0.12);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.record-block > .mini-row {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
 }
 
 .break-history {
-  border: 1px solid rgba(28, 24, 22, 0.1);
-  border-radius: 12px;
-  background: #fff;
-  padding: 10px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
   display: grid;
   gap: 6px;
 }

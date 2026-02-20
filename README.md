@@ -68,8 +68,8 @@ This project uses role-based access with three roles: `admin`, `manager`, and `e
 ### 2) Login 
 ![Login Screenshot](./docs/images/login.png)
 
-### 3) Attendance 
-![Attendance Screenshot](./docs/images/attendance.png)
+### 3) Add Employee/Manger 
+![Add Employee/Manger](./docs/images/add_employee.png)
 
 
 ---
@@ -134,7 +134,7 @@ ALLOWED_ORIGINS=http://localhost:5175
 
 ### Frontend `.env` (`frontend/.env`)
 ```env
-VITE_API_URL=http://localhost:8080
+VITE_API_URL=http://localhost:8081
 ```
 
 ---
@@ -146,7 +146,7 @@ cd backend
 go run ./cmd/server
 ```
 
-Backend starts on `http://localhost:8080` (based on `APP_ADDR`).
+Backend starts on `http://localhost:8081` (based on `APP_ADDR`).
 
 ---
 
@@ -157,7 +157,7 @@ cd frontend
 npm run dev
 ```
 
-Frontend starts on Vite default URL (usually `http://localhost:5173`).
+Frontend starts on Vite default URL (usually `http://localhost:5175`).
 
 ---
 

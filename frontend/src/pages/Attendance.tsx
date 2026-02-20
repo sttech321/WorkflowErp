@@ -29,11 +29,40 @@ function getOffsetTimeParts(minutesToAdd: number) {
   };
 }
 
+function formatDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getLocalDateKey(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+  return formatDateKey(parsed);
+}
+
+function formatDateLabel(dateKey: string) {
+  const parsed = new Date(`${dateKey}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return dateKey;
+  }
+  return parsed.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit"
+  });
+}
+
 export default function Attendance() {
+  const todayDate = formatDateKey(new Date());
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [manualEmployeeId, setManualEmployeeId] = useState("");
   const [manualAttendanceId, setManualAttendanceId] = useState("");
+  const [filterEmployeeId, setFilterEmployeeId] = useState("");
+  const [filterStartDate, setFilterStartDate] = useState(todayDate);
+  const [filterEndDate, setFilterEndDate] = useState(todayDate);
+  const [selectedDateByEmployee, setSelectedDateByEmployee] = useState<Record<string, string>>({});
   const [manualCheckInTime, setManualCheckInTime] = useState(() => getCurrentTimeParts().time);
   const [manualCheckInPeriod, setManualCheckInPeriod] = useState<"AM" | "PM">(() => getCurrentTimeParts().period);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +73,8 @@ export default function Attendance() {
   const [manualBreakStartPeriod, setManualBreakStartPeriod] = useState<"AM" | "PM">(() => getCurrentTimeParts().period);
   const [manualBreakEndTime, setManualBreakEndTime] = useState(() => getOffsetTimeParts(15).time);
   const [manualBreakEndPeriod, setManualBreakEndPeriod] = useState<"AM" | "PM">(() => getOffsetTimeParts(15).period);
+  const [manualCheckOutTime, setManualCheckOutTime] = useState(() => getCurrentTimeParts().time);
+  const [manualCheckOutPeriod, setManualCheckOutPeriod] = useState<"AM" | "PM">(() => getCurrentTimeParts().period);
 
   const isManagerView = role === "admin" || role === "manager";
 
@@ -74,12 +105,9 @@ export default function Attendance() {
 
   const employeeById = useMemo(() => new Map(employees.map((employee) => [employee.id, employee])), [employees]);
 
-  const openAttendance = useMemo(
-    () => attendance.filter((record) => !record.checkOut && employeeById.has(record.employeeId)),
-    [attendance, employeeById]
-  );
+  const openAttendance = useMemo(() => attendance.filter((record) => !record.checkOut), [attendance]);
 
-  const selfEmployeeId = currentUser?.employeeId ?? "";
+  const selfEmployeeId = useMemo(() => currentUser?.employeeId ?? "", [currentUser]);
 
   const selfOpenAttendance = useMemo(
     () => (selfEmployeeId ? openAttendance.find((record) => record.employeeId === selfEmployeeId) ?? null : null),
@@ -96,6 +124,71 @@ export default function Attendance() {
     map.forEach((list) => list.sort((a, b) => new Date(b.checkIn).getTime() - new Date(a.checkIn).getTime()));
     return map;
   }, [attendance]);
+
+  const filteredAttendance = useMemo(() => {
+    const start = filterStartDate <= filterEndDate ? filterStartDate : filterEndDate;
+    const end = filterStartDate <= filterEndDate ? filterEndDate : filterStartDate;
+    return attendance.filter((record) => {
+      if (filterEmployeeId && record.employeeId !== filterEmployeeId) {
+        return false;
+      }
+      const recordDate = getLocalDateKey(record.checkIn);
+      if (!recordDate) {
+        return false;
+      }
+      return recordDate >= start && recordDate <= end;
+    });
+  }, [attendance, filterEmployeeId, filterStartDate, filterEndDate]);
+
+  const filteredAttendanceByEmployee = useMemo(() => {
+    const map = new Map<string, Attendance[]>();
+    filteredAttendance.forEach((record) => {
+      const list = map.get(record.employeeId) ?? [];
+      list.push(record);
+      map.set(record.employeeId, list);
+    });
+    map.forEach((list) => list.sort((a, b) => new Date(b.checkIn).getTime() - new Date(a.checkIn).getTime()));
+    return map;
+  }, [filteredAttendance]);
+
+  const employeeDisplayById = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; role: "manager" | "employee" }>();
+    employees.forEach((employee) => {
+      map.set(employee.id, {
+        id: employee.id,
+        name: `${employee.firstName} ${employee.lastName}`.trim(),
+        role: employee.role
+      });
+    });
+    if (selfEmployeeId && currentUser && !map.has(selfEmployeeId)) {
+      map.set(selfEmployeeId, {
+        id: selfEmployeeId,
+        name: currentUser.name || "My Account",
+        role: currentUser.role === "manager" ? "manager" : "employee"
+      });
+    }
+    return map;
+  }, [employees, selfEmployeeId, currentUser]);
+
+  const visibleEmployeeRows = useMemo(() => {
+    const employeeIds = Array.from(filteredAttendanceByEmployee.keys());
+    const rows = employeeIds.map((employeeId) => {
+      const display = employeeDisplayById.get(employeeId);
+      return {
+        id: employeeId,
+        name: display?.name || `Employee ${employeeId.slice(0, 8)}`,
+        role: display?.role || "employee"
+      };
+    });
+
+    return rows.sort((left, right) => {
+      const leftLatest = filteredAttendanceByEmployee.get(left.id)?.[0];
+      const rightLatest = filteredAttendanceByEmployee.get(right.id)?.[0];
+      const leftTime = leftLatest ? new Date(leftLatest.checkIn).getTime() : 0;
+      const rightTime = rightLatest ? new Date(rightLatest.checkIn).getTime() : 0;
+      return rightTime - leftTime;
+    });
+  }, [filteredAttendanceByEmployee, employeeDisplayById]);
 
 
   const manualOpenAttendance = useMemo(
@@ -201,7 +294,11 @@ export default function Attendance() {
     }
     setError(null);
     try {
-      await api.post("/attendance/checkout", { employeeId: selfEmployeeId });
+      if (!selfOpenAttendance) {
+        setError("No active attendance to check out");
+        return;
+      }
+      await api.post("/attendance/checkout", { attendanceId: selfOpenAttendance.id });
       loadAttendance();
     } catch (err) {
       if (axios.isAxiosError(err)) {
@@ -361,8 +458,17 @@ export default function Attendance() {
       return;
     }
     try {
-      await api.post("/attendance/checkout", { attendanceId: manualAttendanceId });
+      const anchor = selectedManualAttendance?.checkIn ?? getManualBreakAnchor();
+      const nowParts = getCurrentTimeParts();
+      const resolvedCheckOutTime = manualCheckOutTime || nowParts.time;
+      const resolvedCheckOutPeriod = manualCheckOutTime ? manualCheckOutPeriod : nowParts.period;
+      const checkOutAt = buildManualBreakDateTime(anchor, resolvedCheckOutTime, resolvedCheckOutPeriod);
+
+      await api.post("/attendance/checkout", { attendanceId: manualAttendanceId, checkOutAt });
       setManualAttendanceId("");
+      const nextTime = getCurrentTimeParts();
+      setManualCheckOutTime(nextTime.time);
+      setManualCheckOutPeriod(nextTime.period);
       loadAttendance();
     } catch (err) {
       if (axios.isAxiosError(err)) {
@@ -530,130 +636,158 @@ export default function Attendance() {
 
   const activeAttendanceRecord = selfOpenAttendance;
   const activeBreak = activeAttendanceRecord?.breaks?.find((item) => !item.breakEnd) ?? null;
+  const hasSelfCheckInToday = useMemo(() => {
+    if (!selfEmployeeId) {
+      return false;
+    }
+    return attendance.some((record) => record.employeeId === selfEmployeeId && getLocalDateKey(record.checkIn) === todayDate);
+  }, [attendance, selfEmployeeId, todayDate]);
 
   return (
     <section className="panel">
       <h1 className="page-title">Attendance</h1>
       {error && <span className="error">{error}</span>}
 
-      <div className="grid attendance-grid">
-        {isManagerView ? (
-          <>
-            <div className="card attendance-card">
-              <label className="section-label">{currentUser?.name || "Manager"}</label>
-              <div className="helper">
-                Break status: {activeBreak ? `On break since ${formatDateTime(activeBreak.breakStart)}` : "No active break"}
-              </div>
-              <div className="pill-group">
-                <button className="button" type="button" onClick={handleManagerOwnCheckIn}>
-                  Check In
-                </button>
-                <button className="ghost" type="button" onClick={handleManagerOwnBreakStart}>
-                  Start Break
-                </button>
-                <button className="ghost" type="button" onClick={handleManagerOwnBreakEnd}>
-                  End Break
-                </button>
-                <button className="button" type="button" onClick={handleManagerOwnCheckOut}>
-                  Check Out
+      {isManagerView ? (
+        <div className="attendance-manager-sections">
+          <div className="card attendance-card">
+            <label className="section-label">{currentUser?.name || "Manager"}</label>
+            <div className="helper">
+              Break status: {activeBreak ? `On break since ${formatDateTime(activeBreak.breakStart)}` : "No active break"}
+            </div>
+            <div className="pill-group">
+              <button className="button" type="button" onClick={handleManagerOwnCheckIn} disabled={hasSelfCheckInToday}>
+                Check In
+              </button>
+              <button className="ghost" type="button" onClick={handleManagerOwnBreakStart} disabled={!activeAttendanceRecord}>
+                Start Break
+              </button>
+              <button className="ghost" type="button" onClick={handleManagerOwnBreakEnd} disabled={!activeAttendanceRecord || !activeBreak}>
+                End Break
+              </button>
+              <button className="button" type="button" onClick={handleManagerOwnCheckOut} disabled={!activeAttendanceRecord}>
+                Check Out
+              </button>
+            </div>
+            {hasSelfCheckInToday && <div className="helper">You already checked in today. Check-in is disabled for today.</div>}
+            {!activeAttendanceRecord && hasSelfCheckInToday && (
+              <div className="helper">No active attendance is open for check-out.</div>
+            )}
+          </div>
+
+          <div className="card attendance-card">
+            <label className="section-label">Employee Manual Entry</label>
+            <select value={manualEmployeeId} onChange={(event) => setManualEmployeeId(event.target.value)}>
+              <option value="">Select employee</option>
+              {employees.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.firstName} {employee.lastName}
+                </option>
+              ))}
+            </select>
+
+            <div className="manual-break-block">
+              <label>Manual Check In Time</label>
+              <div className="manual-checkin-grid">
+                <input
+                  type="text"
+                  placeholder="hh:mm"
+                  inputMode="numeric"
+                  value={manualCheckInTime}
+                  onChange={(event) => handleTimeInputChange(event.target.value, setManualCheckInTime)}
+                />
+                <select
+                  value={manualCheckInPeriod}
+                  onChange={(event) => setManualCheckInPeriod(event.target.value as "AM" | "PM")}
+                >
+                  <option value="AM">AM</option>
+                  <option value="PM">PM</option>
+                </select>
+                <button className="button" type="button" onClick={handleManualEmployeeCheckIn}>
+                  Add Check In
                 </button>
               </div>
             </div>
 
-            <div className="card attendance-card">
-              <label className="section-label">Employee Manual Entry</label>
-              <select value={manualEmployeeId} onChange={(event) => setManualEmployeeId(event.target.value)}>
-                <option value="">Select employee</option>
-                {employees.map((employee) => (
-                  <option key={employee.id} value={employee.id}>
-                    {employee.firstName} {employee.lastName}
-                  </option>
-                ))}
-              </select>
+            <div className="manual-break-block">
+              <label>Manual Check Out</label>
+              <div className="manual-checkin-grid">
+                <input
+                  type="text"
+                  placeholder="hh:mm"
+                  inputMode="numeric"
+                  value={manualCheckOutTime}
+                  onChange={(event) => handleTimeInputChange(event.target.value, setManualCheckOutTime)}
+                />
+                <select
+                  value={manualCheckOutPeriod}
+                  onChange={(event) => setManualCheckOutPeriod(event.target.value as "AM" | "PM")}
+                >
+                  <option value="AM">AM</option>
+                  <option value="PM">PM</option>
+                </select>
+                <button className="button" type="button" onClick={handleManualEmployeeCheckOut}>
+                  Add Check Out
+                </button>
+              </div>
+            </div>
 
-              <div className="manual-break-block">
-                <label>Manual Check In Time</label>
-                <div className="manual-checkin-grid">
+            <div className="manual-break-block">
+              <label>Manual Break Entry</label>
+              <select value={manualAttendanceId} onChange={(event) => setManualAttendanceId(event.target.value)}>
+                <option value="">Select active attendance</option>
+                {manualOpenAttendance.map((record) => {
+                  const employee = employeeById.get(record.employeeId);
+                  if (!employee) return null;
+                  return (
+                    <option key={record.id} value={record.id}>
+                      {employee.firstName} {employee.lastName} · {formatDateTime(record.checkIn)}
+                    </option>
+                  );
+                })}
+              </select>
+              <div className="manual-break-grid">
+                <div className="manual-time-row">
                   <input
                     type="text"
                     placeholder="hh:mm"
                     inputMode="numeric"
-                    value={manualCheckInTime}
-                    onChange={(event) => handleTimeInputChange(event.target.value, setManualCheckInTime)}
+                    value={manualBreakStartTime}
+                    onChange={(event) => handleTimeInputChange(event.target.value, setManualBreakStartTime)}
                   />
                   <select
-                    value={manualCheckInPeriod}
-                    onChange={(event) => setManualCheckInPeriod(event.target.value as "AM" | "PM")}
+                    value={manualBreakStartPeriod}
+                    onChange={(event) => setManualBreakStartPeriod(event.target.value as "AM" | "PM")}
                   >
                     <option value="AM">AM</option>
                     <option value="PM">PM</option>
                   </select>
-                  <button className="button" type="button" onClick={handleManualEmployeeCheckIn}>
-                    Add Check In
-                  </button>
                 </div>
-              </div>
-
-              <div className="manual-break-block">
-                <label>Manual Break Entry</label>
-                <select value={manualAttendanceId} onChange={(event) => setManualAttendanceId(event.target.value)}>
-                  <option value="">Select active attendance</option>
-                  {manualOpenAttendance.map((record) => {
-                    const employee = employeeById.get(record.employeeId);
-                    if (!employee) return null;
-                    return (
-                      <option key={record.id} value={record.id}>
-                        {employee.firstName} {employee.lastName} · {formatDateTime(record.checkIn)}
-                      </option>
-                    );
-                  })}
-                </select>
-                <div className="manual-break-grid">
-                  <div className="manual-time-row">
-                    <input
-                      type="text"
-                      placeholder="hh:mm"
-                      inputMode="numeric"
-                      value={manualBreakStartTime}
-                      onChange={(event) => handleTimeInputChange(event.target.value, setManualBreakStartTime)}
-                    />
-                    <select
-                      value={manualBreakStartPeriod}
-                      onChange={(event) => setManualBreakStartPeriod(event.target.value as "AM" | "PM")}
-                    >
-                      <option value="AM">AM</option>
-                      <option value="PM">PM</option>
-                    </select>
-                  </div>
-                  <div className="manual-time-row">
-                    <input
-                      type="text"
-                      placeholder="hh:mm"
-                      inputMode="numeric"
-                      value={manualBreakEndTime}
-                      onChange={(event) => handleTimeInputChange(event.target.value, setManualBreakEndTime)}
-                    />
-                    <select
-                      value={manualBreakEndPeriod}
-                      onChange={(event) => setManualBreakEndPeriod(event.target.value as "AM" | "PM")}
-                    >
-                      <option value="AM">AM</option>
-                      <option value="PM">PM</option>
-                    </select>
-                  </div>
-                  <button className="ghost" type="button" onClick={handleManualBreakAdd}>
-                    Add Break
-                  </button>
+                <div className="manual-time-row">
+                  <input
+                    type="text"
+                    placeholder="hh:mm"
+                    inputMode="numeric"
+                    value={manualBreakEndTime}
+                    onChange={(event) => handleTimeInputChange(event.target.value, setManualBreakEndTime)}
+                  />
+                  <select
+                    value={manualBreakEndPeriod}
+                    onChange={(event) => setManualBreakEndPeriod(event.target.value as "AM" | "PM")}
+                  >
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
+                  </select>
                 </div>
-                <div className="manual-action-row">
-                  <button className="button" type="button" onClick={handleManualEmployeeCheckOut}>
-                    Add Check Out
-                  </button>
-                </div>
+                <button className="ghost" type="button" onClick={handleManualBreakAdd}>
+                  Add Break
+                </button>
               </div>
             </div>
-          </>
-        ) : (
+          </div>
+        </div>
+      ) : (
+        <div className="grid attendance-grid">
           <div className="card attendance-card">
             <label className="section-label">My Shift</label>
             <div className="helper">{currentUser?.name ? `Signed in as ${currentUser.name}` : "Signed in"}</div>
@@ -661,7 +795,7 @@ export default function Attendance() {
               Break status: {activeBreak ? `On break since ${formatDateTime(activeBreak.breakStart)}` : "No active break"}
             </div>
             <div className="pill-group">
-              <button className="button" type="button" onClick={handleEmployeeCheckIn}>
+              <button className="button" type="button" onClick={handleEmployeeCheckIn} disabled={hasSelfCheckInToday}>
                 Check In
               </button>
               <button className="ghost" type="button" onClick={handleEmployeeBreakStart}>
@@ -674,9 +808,40 @@ export default function Attendance() {
                 Check Out
               </button>
             </div>
+            {hasSelfCheckInToday && <div className="helper">You already checked in today. Check-in is disabled for today.</div>}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {isManagerView && (
+        <div className="card attendance-filter-card">
+          <div className="attendance-filter-grid">
+            <div>
+              <label>Employee</label>
+              <select value={filterEmployeeId} onChange={(event) => setFilterEmployeeId(event.target.value)}>
+                <option value="">All employees</option>
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.firstName} {employee.lastName}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label>Start Date</label>
+              <input type="date" value={filterStartDate} onChange={(event) => setFilterStartDate(event.target.value)} />
+            </div>
+            <div>
+              <label>End Date</label>
+              <input type="date" value={filterEndDate} onChange={(event) => setFilterEndDate(event.target.value)} />
+            </div>
+          </div>
+          <div className="helper">
+            Showing attendance from {formatDateLabel(filterStartDate <= filterEndDate ? filterStartDate : filterEndDate)} to {" "}
+            {formatDateLabel(filterStartDate <= filterEndDate ? filterEndDate : filterStartDate)}
+          </div>
+        </div>
+      )}
 
       <div className="list-table">
         <div className="list-row list-head attendance-summary">
@@ -687,20 +852,55 @@ export default function Attendance() {
           <span>Work Hours</span>
           <span>Break Hours</span>
         </div>
-        {employees.map((employee) => {
-          const records = attendanceByEmployee.get(employee.id) ?? [];
+        {visibleEmployeeRows.length === 0 && (
+          <div className="list-row">
+            <span>No attendance records in selected filter.</span>
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
+          </div>
+        )}
+        {visibleEmployeeRows.map((employeeRow) => {
+          const records = filteredAttendanceByEmployee.get(employeeRow.id) ?? [];
           const latest = records[0];
           const status = latest && !latest.checkOut ? "Checked In" : "Checked Out";
-          const isSelected = selectedEmployeeId === employee.id;
+          const isSelected = selectedEmployeeId === employeeRow.id;
+          const isManagerRecord = employeeRow.role === "manager";
+          const canModifyEmployeeData = role === "admin" || (role === "manager" && !isManagerRecord);
+
+          const recordsByDate = records.reduce<Record<string, Attendance[]>>((grouped, record) => {
+            const key = getLocalDateKey(record.checkIn);
+            if (!key) {
+              return grouped;
+            }
+            if (!grouped[key]) {
+              grouped[key] = [];
+            }
+            grouped[key].push(record);
+            return grouped;
+          }, {});
+          const dateKeys = Object.keys(recordsByDate).sort((a, b) => b.localeCompare(a));
+          const preferredDate = selectedDateByEmployee[employeeRow.id];
+          const selectedDate =
+            (preferredDate && recordsByDate[preferredDate] ? preferredDate : "") ||
+            (recordsByDate[todayDate] ? todayDate : dateKeys[0] ?? "");
+          const selectedDateRecords = selectedDate ? recordsByDate[selectedDate] ?? [] : [];
+          const otherDateKeys = dateKeys.filter((key) => key !== selectedDate);
+
           return (
-            <div key={employee.id}>
+            <div key={employeeRow.id}>
               <div
                 className={`list-row attendance-summary clickable${isSelected ? " is-selected" : ""}`}
-                onClick={() => setSelectedEmployeeId((current) => (current === employee.id ? null : employee.id))}
+                onClick={() => setSelectedEmployeeId((current) => (current === employeeRow.id ? null : employeeRow.id))}
                 role="button"
                 tabIndex={0}
               >
-                <span>{employee.firstName} {employee.lastName}</span>
+                <span>
+                  {employeeRow.name}
+                  {employeeRow.role === "manager" ? " (Manager)" : ""}
+                </span>
                 <span>
                   <span className={`status-pill ${status === "Checked In" ? "status-in" : "status-out"}`}>
                     {status}
@@ -716,10 +916,30 @@ export default function Attendance() {
                 <div className="row-expand">
                   <div className="detail-header">
                     <div>
-                      <strong>{employee.firstName} {employee.lastName}</strong>
-                      <div className="helper">Total work: {formatHoursMinutesFromMs(totalWorkMs(records))} | Total break: {formatHoursMinutesFromMs(totalBreakMs(records))}</div>
+                      <strong>
+                        {employeeRow.name}
+                        {employeeRow.role === "manager" ? " (Manager)" : ""}
+                      </strong>
+                      <div className="helper">
+                        Showing {selectedDate ? formatDateLabel(selectedDate) : "selected date"} data | Work: {formatHoursMinutesFromMs(totalWorkMs(selectedDateRecords))} | Break: {formatHoursMinutesFromMs(totalBreakMs(selectedDateRecords))}
+                      </div>
                     </div>
                   </div>
+
+                  <div className="attendance-date-row">
+                    {otherDateKeys.length > 0 && <span className="helper">Other Days:</span>}
+                    {otherDateKeys.map((dateKey) => (
+                      <button
+                        key={dateKey}
+                        className={`date-chip${selectedDate === dateKey ? " active" : ""}`}
+                        type="button"
+                        onClick={() => setSelectedDateByEmployee((current) => ({ ...current, [employeeRow.id]: dateKey }))}
+                      >
+                        {formatDateLabel(dateKey)}
+                      </button>
+                    ))}
+                  </div>
+
                   <div className="mini-table">
                     <div className="mini-row mini-head">
                       <span>Check In</span>
@@ -728,16 +948,16 @@ export default function Attendance() {
                       <span>Break Hours</span>
                       <span>Actions</span>
                     </div>
-                    {records.length === 0 ? (
+                    {selectedDateRecords.length === 0 ? (
                       <div className="mini-row">
-                        <span className="helper">No attendance yet</span>
+                        <span className="helper">No attendance on selected date</span>
                         <span />
                         <span />
                         <span />
                         <span />
                       </div>
                     ) : (
-                      records.map((record) => (
+                      selectedDateRecords.map((record) => (
                         <div className="record-block" key={record.id}>
                           <div className="mini-row">
                             <span>{formatDateTime(record.checkIn)}</span>
@@ -745,7 +965,7 @@ export default function Attendance() {
                             <span>{formatHoursMinutesFromMs(workDurationMs(record))}</span>
                             <span>{formatHoursMinutesFromMs(breakDurationMs(record.breaks))} ({record.breaks?.length ?? 0} breaks)</span>
                             <span>
-                              {isManagerView && (
+                              {canModifyEmployeeData && (
                                 <button className="ghost" type="button" onClick={() => handleDelete(record)}>
                                   Delete
                                 </button>

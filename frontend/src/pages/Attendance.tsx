@@ -77,6 +77,7 @@ export default function Attendance() {
   const [manualCheckOutPeriod, setManualCheckOutPeriod] = useState<"AM" | "PM">(() => getCurrentTimeParts().period);
 
   const isManagerView = role === "admin" || role === "manager";
+  const isManagerOnlyView = role === "manager";
 
   const loadAttendance = () => {
     api
@@ -294,11 +295,11 @@ export default function Attendance() {
     }
     setError(null);
     try {
-      if (!selfOpenAttendance) {
-        setError("No active attendance to check out");
+      if (!selfLatestTodayAttendance) {
+        setError("No check-in found for today");
         return;
       }
-      await api.post("/attendance/checkout", { attendanceId: selfOpenAttendance.id });
+      await api.post("/attendance/checkout", { attendanceId: selfLatestTodayAttendance.id });
       loadAttendance();
     } catch (err) {
       if (axios.isAxiosError(err)) {
@@ -493,7 +494,11 @@ export default function Attendance() {
   const handleEmployeeCheckOut = async () => {
     setError(null);
     try {
-      await api.post("/attendance/checkout", {});
+      if (!selfLatestTodayAttendance) {
+        setError("No check-in found for today");
+        return;
+      }
+      await api.post("/attendance/checkout", { attendanceId: selfLatestTodayAttendance.id });
       loadAttendance();
     } catch {
       setError("Check-out failed");
@@ -636,6 +641,20 @@ export default function Attendance() {
 
   const activeAttendanceRecord = selfOpenAttendance;
   const activeBreak = activeAttendanceRecord?.breaks?.find((item) => !item.breakEnd) ?? null;
+  const selfLatestTodayAttendance = useMemo(() => {
+    if (!selfEmployeeId) {
+      return null;
+    }
+    const todayRecords = attendance.filter(
+      (record) => record.employeeId === selfEmployeeId && getLocalDateKey(record.checkIn) === todayDate
+    );
+    if (todayRecords.length === 0) {
+      return null;
+    }
+    return todayRecords.reduce((latest, record) =>
+      new Date(record.checkIn).getTime() > new Date(latest.checkIn).getTime() ? record : latest
+    );
+  }, [attendance, selfEmployeeId, todayDate]);
   const hasSelfCheckInToday = useMemo(() => {
     if (!selfEmployeeId) {
       return false;
@@ -650,30 +669,32 @@ export default function Attendance() {
 
       {isManagerView ? (
         <div className="attendance-manager-sections">
-          <div className="card attendance-card">
-            <label className="section-label">{currentUser?.name || "Manager"}</label>
-            <div className="helper">
-              Break status: {activeBreak ? `On break since ${formatDateTime(activeBreak.breakStart)}` : "No active break"}
+          {isManagerOnlyView && (
+            <div className="card attendance-card">
+              <label className="section-label">{currentUser?.name || "Manager"}</label>
+              <div className="helper">
+                Break status: {activeBreak ? `On break since ${formatDateTime(activeBreak.breakStart)}` : "No active break"}
+              </div>
+              <div className="pill-group">
+                <button className="button" type="button" onClick={handleManagerOwnCheckIn} disabled={hasSelfCheckInToday}>
+                  Check In
+                </button>
+                <button className="ghost" type="button" onClick={handleManagerOwnBreakStart} disabled={!activeAttendanceRecord}>
+                  Start Break
+                </button>
+                <button className="ghost" type="button" onClick={handleManagerOwnBreakEnd} disabled={!activeAttendanceRecord || !activeBreak}>
+                  End Break
+                </button>
+                <button className="button" type="button" onClick={handleManagerOwnCheckOut} disabled={!selfLatestTodayAttendance}>
+                  Check Out
+                </button>
+              </div>
+              {hasSelfCheckInToday && <div className="helper">You already checked in today. Check-in is disabled for today.</div>}
+              {!selfLatestTodayAttendance && (
+                <div className="helper">Check-out is disabled until you check in today.</div>
+              )}
             </div>
-            <div className="pill-group">
-              <button className="button" type="button" onClick={handleManagerOwnCheckIn} disabled={hasSelfCheckInToday}>
-                Check In
-              </button>
-              <button className="ghost" type="button" onClick={handleManagerOwnBreakStart} disabled={!activeAttendanceRecord}>
-                Start Break
-              </button>
-              <button className="ghost" type="button" onClick={handleManagerOwnBreakEnd} disabled={!activeAttendanceRecord || !activeBreak}>
-                End Break
-              </button>
-              <button className="button" type="button" onClick={handleManagerOwnCheckOut} disabled={!activeAttendanceRecord}>
-                Check Out
-              </button>
-            </div>
-            {hasSelfCheckInToday && <div className="helper">You already checked in today. Check-in is disabled for today.</div>}
-            {!activeAttendanceRecord && hasSelfCheckInToday && (
-              <div className="helper">No active attendance is open for check-out.</div>
-            )}
-          </div>
+          )}
 
           <div className="card attendance-card">
             <label className="section-label">Employee Manual Entry</label>
@@ -798,17 +819,20 @@ export default function Attendance() {
               <button className="button" type="button" onClick={handleEmployeeCheckIn} disabled={hasSelfCheckInToday}>
                 Check In
               </button>
-              <button className="ghost" type="button" onClick={handleEmployeeBreakStart}>
+              <button className="ghost" type="button" onClick={handleEmployeeBreakStart} disabled={!activeAttendanceRecord || !!activeBreak}>
                 Start Break
               </button>
-              <button className="ghost" type="button" onClick={handleEmployeeBreakEnd}>
+              <button className="ghost" type="button" onClick={handleEmployeeBreakEnd} disabled={!activeAttendanceRecord || !activeBreak}>
                 End Break
               </button>
-              <button className="button" type="button" onClick={handleEmployeeCheckOut}>
+              <button className="button" type="button" onClick={handleEmployeeCheckOut} disabled={!selfLatestTodayAttendance}>
                 Check Out
               </button>
             </div>
             {hasSelfCheckInToday && <div className="helper">You already checked in today. Check-in is disabled for today.</div>}
+            {!selfLatestTodayAttendance && (
+              <div className="helper">Check-out is disabled until you check in today.</div>
+            )}
           </div>
         </div>
       )}

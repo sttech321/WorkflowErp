@@ -246,28 +246,37 @@ func (h *AttendanceHandler) CheckOut(c *gin.Context) {
 	role, _ := c.Get(middleware.ContextRole)
 
 	var record models.Attendance
-	var err error
-	record, err = h.findOpenAttendance(c, req.AttendanceID, req.EmployeeID)
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "open attendance not found"})
-			return
-		}
-		if _, parseErr := uuid.Parse(req.AttendanceID); req.AttendanceID != "" && parseErr != nil {
+	if req.AttendanceID != "" {
+		attendanceID, parseErr := uuid.Parse(req.AttendanceID)
+		if parseErr != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid attendanceId"})
 			return
 		}
-		if _, parseErr := uuid.Parse(req.EmployeeID); req.EmployeeID != "" && parseErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid employeeId"})
+		if err := h.DB.Preload("Breaks", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at asc")
+		}).First(&record, "id = ?", attendanceID).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "attendance not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "checkout failed"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "checkout failed"})
-		return
-	}
-
-	if record.CheckOut != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "already checked out"})
-		return
+	} else {
+		var err error
+		record, err = h.findOpenAttendance(c, req.AttendanceID, req.EmployeeID)
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "open attendance not found"})
+				return
+			}
+			if _, parseErr := uuid.Parse(req.EmployeeID); req.EmployeeID != "" && parseErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid employeeId"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "checkout failed"})
+			return
+		}
 	}
 
 	if role == "employee" {

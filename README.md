@@ -59,8 +59,6 @@ This project uses role-based access with three roles: `admin`, `manager`, and `e
 
 ---
 
-## Add Project Images Here
-
 
 ### 1) Dashboard 
 ![Dashboard Screenshot](./docs/images/dashboard.png)

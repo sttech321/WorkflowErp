@@ -68,12 +68,12 @@ body {
 
 .app-top-brand img {
   max-height: 56px;
-  width: min(100%, calc(var(--sidebar-width) - 8px));
+  width: auto;
   max-width: calc(var(--sidebar-width) - 8px);
   height: auto;
   object-fit: contain;
   display: block;
-  margin-right: auto;
+  margin: 0;
 }
 
 .app-shell.sidebar-collapsed .app-top-brand img {

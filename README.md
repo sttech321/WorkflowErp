@@ -17,6 +17,56 @@ This project helps a company run daily HR and operations workflows from one dash
 
 ---
 
+## Role Permissions (Current)
+
+This project uses role-based access with three roles: `admin`, `manager`, and `employee`.
+
+### Admin
+- Full access to all authenticated modules
+- Create, update, delete employees (both `manager` and `employee`)
+- Create user accounts and reset employee user passwords
+- Create, update, delete invoices
+- Manage attendance records (including manual breaks and delete attendance entries)
+- Approve/reject/pending leave requests and manage leave policies
+- Update company logo/settings
+
+### Manager
+- Can create employee records and employee user accounts with role `employee` only
+- Cannot create or promote another `manager`
+- Can manage employees, invoices, attendance records, and leave policies within manager scope
+- Cannot approve leave when the requester is a `manager` (admin-only approval)
+- Can update company logo/settings
+
+### Employee
+- Access own account features (`/me`, update profile, change password)
+- Use attendance self-service actions: check-in, break start/end, check-out, and attendance list
+- Create/update/delete own leave requests (subject to handler ownership rules)
+- View leave balances
+
+### Quick Access Matrix
+
+| Module / Action | Admin | Manager | Employee |
+|---|---|---|---|
+| Dashboard view | ✅ | ✅ | ✅ |
+| Employees list | ✅ | ✅ | ✅ |
+| Employees create/update/delete | ✅ (manager + employee) | ✅ (employee only) | ❌ |
+| Employee user/password management | ✅ (manager + employee) | ✅ (employee only) | ❌ |
+| Invoices list | ✅ | ✅ | ✅ |
+| Invoices create/update/delete | ✅ | ✅ | ❌ |
+| Attendance check-in/out & breaks | ✅ | ✅ | ✅ |
+| Attendance manual break/delete records | ✅ | ✅ | ❌ |
+| Leave request create/update/delete | ✅ | ✅ | ✅ |
+| Leave approve/reject/pending | ✅ | ✅* | ❌ |
+| Leave policy view/update | ✅ | ✅ | ❌ |
+| Settings logo view | ✅ | ✅ | ✅ |
+| Settings logo update | ✅ | ✅ | ❌ |
+
+> `*` Manager cannot approve leave for a requester with role `manager`; only admin can.
+
+> Note: This matrix reflects the current backend route middleware and handler-level checks.
+
+---
+
 ## Technology Used
 
 ### Backend
@@ -36,18 +86,16 @@ This project helps a company run daily HR and operations workflows from one dash
 
 ## Add Project Images Here
 
-You can replace these placeholders with your own screenshots.
 
-### 1) Dashboard Image
+### 1) Dashboard 
 ![Dashboard Screenshot](./docs/images/dashboard.png)
 
-### 2) Login Image
+### 2) Login 
 ![Login Screenshot](./docs/images/login.png)
 
-### 3) Attendance Image
+### 3) Attendance 
 ![Attendance Screenshot](./docs/images/attendance.png)
 
-> Create the folder `docs/images` and add your image files with these names, or change the paths to your own image names.
 
 ---
 
@@ -73,6 +121,7 @@ Backend is in `backend/` and provides REST APIs under `/api`.
 ```bash
 git clone <your-repo-url>
 cd Erp_go
+cd WorkflowErp
 ```
 
 ### 2) Start database
@@ -105,7 +154,7 @@ SMTP_PORT=587
 SMTP_USER=your_email
 SMTP_PASS=your_app_password
 SMTP_FROM=WorkFlow ERP Support <your_email>
-ALLOWED_ORIGINS=http://localhost:5173
+ALLOWED_ORIGINS=http://localhost:5175
 ```
 
 ### Frontend `.env` (`frontend/.env`)
